@@ -13,7 +13,7 @@ extern "C" LIB_EXPORT void init(rgbcx::bc1_approx_mode mode = rgbcx::bc1_approx_
     return rgbcx::init(mode);
 }
 
-extern "C" void bc7_init() {
+extern "C" LIB_EXPORT void bc7_init() {
     return bc7enc_compress_block_init();
 }
 
@@ -28,28 +28,33 @@ extern "C" LIB_EXPORT bool unpack_bc7(const void* pBlock, bc7decomp::color_rgba*
 }
 
 
+extern "C" LIB_EXPORT bool unpack_bc3(const void* pBlock_bits, void* pPixels, rgbcx::bc1_approx_mode mode) {
+    return rgbcx::unpack_bc3(pBlock_bits, pPixels, mode);
+}
+
+
 extern "C" LIB_EXPORT bool pack_bc7_block(void *pBlock, const void *pPixelsRGBA, const bc7enc_compress_block_params *pComp_params) {
     return bc7enc_compress_block(pBlock, pPixelsRGBA, pComp_params);
 }
 
 extern "C" LIB_EXPORT void compress_image(uint8_t *rgba, int width, int height, void *blocks, const bc7enc_compress_block_params *pComp_params) {
 
-    // TODO: DXT
-    int bytesPerBlock = 16; // ( ( flags & kDxt1 ) != 0 ) ? 8 : 16;
+    // BC7 only; DXT1/DXT3/DXT5 encoding isn't implemented here yet.
+    int bytesPerBlock = 16;
 
     // initialise the block output
     uint8_t* targetBlock = reinterpret_cast< uint8_t* >( blocks );
-    // TODO
-    //int bh = std::min(width, 4);
-    //int bw = std::min(height, 4);
-    int bh = 4;
-    int bw = 4;
 
-    // loop over blocks
+    // loop over blocks. width/height need not be multiples of 4 (per the DDS/BC
+    // spec, block storage always rounds up); edge blocks past the image bounds
+    // wrap the last valid row/column instead of reading out of bounds.
     for( int y = 0; y < height; y += 4 )
     {
+        int bh = (height - y) < 4 ? (height - y) : 4;
         for( int x = 0; x < width; x += 4 )
         {
+            int bw = (width - x) < 4 ? (width - x) : 4;
+
             // build the 4x4 block of pixels
             uint8_t sourceRgba[16*4];
             uint8_t* targetPixel = sourceRgba;
@@ -62,14 +67,12 @@ extern "C" LIB_EXPORT void compress_image(uint8_t *rgba, int width, int height, 
                     int sy = y + (py % bh);
 
                     // copy the rgba value
-                    //uint8_t const* sourcePixel = rgba + 4*( width*sy + sx );
                     uint8_t const* sourcePixel = rgba + 4*( width*sy + sx );
                     for( int i = 0; i < 4; ++i )
                         *targetPixel++ = *sourcePixel++;
                 }
             }
             // compress it into the output
-            //Compress( sourceRgba, targetBlock, flags );
             bc7enc_compress_block(targetBlock, sourceRgba, pComp_params);
             // advance
             targetBlock += bytesPerBlock;

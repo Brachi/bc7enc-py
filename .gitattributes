@@ -1,0 +1,2 @@
+tests/data/*.png filter=lfs diff=lfs merge=lfs -text
+tests/data/*.dds filter=lfs diff=lfs merge=lfs -text

@@ -1,5 +1,6 @@
 from array import array
 import ctypes
+import enum
 import struct
 from ctypes import byref
 import os
@@ -13,6 +14,15 @@ if not bc7:
     except OSError:
         bc7 = ctypes.cdll.LoadLibrary(os.path.join(this_dir, 'pybc7.dll'))
     bc7.init(0)
+    bc7.bc7_init()
+
+
+class BC1ApproxMode(enum.IntEnum):
+    """Mirrors rgbcx::bc1_approx_mode (bc7enc_rdo/rgbcx.h)."""
+    IDEAL = 0
+    NVIDIA = 1
+    AMD = 2
+    IDEAL_ROUND_4 = 3
 
 
 class RGBA(ctypes.Structure):
@@ -34,6 +44,7 @@ class color_rgba(ctypes.Union):
 
 DDS_FORMATS_BLOCK_SIZE = {
     "DXT1": (8, bc7.unpack_bc1),
+    "DXT5": (16, bc7.unpack_bc3),
     "BC7": (16, bc7.unpack_bc7),
 }
 
@@ -159,12 +170,9 @@ struct bc7enc_compress_block_params
 	float m_low_frequency_partition_weight;
 """
 
-COLORS_PER_BLOCK = 16
-
 
 def pack_bc7(rgba_bytes, params):
     # TODO: do more than one block of 16x16 rgba pixels
-    bc7.bc7_init()  # FIXME: global init
     dst_block = ctypes.create_string_buffer(16)
     rgba_ctypes = ctypes.create_string_buffer(rgba_bytes)
 
@@ -174,13 +182,14 @@ def pack_bc7(rgba_bytes, params):
 
 
 def compress_bc7_image(rgba, width, height):
-    bc7.bc7_init()  # FIXME: global init
     bc7_params = bc7enc_compress_block_params_init()
 
-    # TODO: assert power of 2
-    num_pixels = width * height
-    num_bytes = num_pixels * 4
-    num_blocks = num_bytes // 64
+    # Block storage rounds up: width/height need not be multiples of 4 (nor
+    # powers of 2) per the DDS/BC spec, and wrapper.cpp's compress_image
+    # clamps edge-block reads accordingly.
+    blocks_wide = (width + 3) // 4
+    blocks_high = (height + 3) // 4
+    num_blocks = blocks_wide * blocks_high
     size_bc7_block = 16
 
     rgba = array("B", rgba)
@@ -206,11 +215,11 @@ def unpack_dds(file_handle, width, height, dds_format, data_offset):
 
     SIZE_BLOCK, unpack_func = DDS_FORMATS_BLOCK_SIZE[dds_format]
 
-    num_pixels = height * width
-    num_colors = num_pixels * 4
-    num_blocks = num_colors // COLORS_PER_BLOCK // 4
-    size_blocks = num_blocks * SIZE_BLOCK
-
+    # Block storage rounds up: width/height need not be multiples of 4 per the
+    # DDS/BC spec, and rearrange_pixels() already clamps edge-block writes.
+    blocks_wide = (width + 3) // 4
+    blocks_high = (height + 3) // 4
+    num_blocks = blocks_wide * blocks_high
 
     file_handle.seek(data_offset)
     rgba = ctypes.create_string_buffer(width * height * 4)
@@ -221,7 +230,9 @@ def unpack_dds(file_handle, width, height, dds_format, data_offset):
             block_bytes = ctypes.create_string_buffer(file_handle.read(SIZE_BLOCK))
             result_pixels = (color_rgba * 16)()
             if dds_format == "DXT1":
-                unpack_func(ctypes.byref(block_bytes), ctypes.byref(result_pixels), True, 0)  # TODO: create actual enum
+                unpack_func(ctypes.byref(block_bytes), ctypes.byref(result_pixels), True, BC1ApproxMode.IDEAL)
+            elif dds_format == "DXT5":
+                unpack_func(ctypes.byref(block_bytes), ctypes.byref(result_pixels), BC1ApproxMode.IDEAL)
             else:
                 unpack_func(ctypes.byref(block_bytes), ctypes.byref(result_pixels))
 

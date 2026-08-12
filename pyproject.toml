@@ -15,7 +15,7 @@ keywords = ["dds", "bc7", "bc7enc", "bc7enc_rdo"]
 dependencies = []
 
 [project.optional-dependencies]
-tests = ["pytest", "pillow"]
+tests = ["pytest", "pillow", "numpy"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
