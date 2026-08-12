@@ -46,6 +46,7 @@ DDS_FORMATS_BLOCK_SIZE = {
     "DXT1": (8, bc7.unpack_bc1),
     "DXT5": (16, bc7.unpack_bc3),
     "BC7": (16, bc7.unpack_bc7),
+    "BC5": (16, bc7.unpack_bc5),
 }
 
 
@@ -181,30 +182,64 @@ def pack_bc7(rgba_bytes, params):
     return bytes(dst_block)
 
 
-def compress_bc7_image(rgba, width, height):
-    bc7_params = bc7enc_compress_block_params_init()
+# rgbcx.h: "If in doubt just use level 10" (range is MIN_LEVEL=0..MAX_LEVEL=18).
+DEFAULT_LEVEL = 10
+
+
+def _pack_dds_bc1(rgba_ptr, width, height, blocks_ptr, level=DEFAULT_LEVEL,
+                   allow_3color=True, use_transparent_texels_for_black=False):
+    bc7.compress_image_bc1(rgba_ptr, width, height, blocks_ptr,
+                            level, allow_3color, use_transparent_texels_for_black)
+
+
+def _pack_dds_bc3(rgba_ptr, width, height, blocks_ptr, level=DEFAULT_LEVEL):
+    bc7.compress_image_bc3(rgba_ptr, width, height, blocks_ptr, level)
+
+
+def _pack_dds_bc5(rgba_ptr, width, height, blocks_ptr, chan0=0, chan1=1):
+    bc7.compress_image_bc5(rgba_ptr, width, height, blocks_ptr, chan0, chan1)
+
+
+def _pack_dds_bc7(rgba_ptr, width, height, blocks_ptr, params=None):
+    if params is None:
+        params = bc7enc_compress_block_params_init()
+    bc7.compress_image(rgba_ptr, width, height, blocks_ptr, ctypes.byref(params))
+
+
+# bc7enc_rdo only provides single-block encoders (bc7enc_compress_block,
+# rgbcx::encode_bc1/bc3/bc5); there's no whole-image DXT1/DXT3/DXT5 encoder
+# to call directly. wrapper.cpp's compress_image_bc1/bc3/bc5 add that by
+# reusing the same block-iteration loop as compress_image (BC7) - see
+# compress_image_blocks() there - without modifying the bc7enc_rdo submodule.
+PACK_DDS_FORMATS = {
+    "DXT1": (8, _pack_dds_bc1),
+    "DXT5": (16, _pack_dds_bc3),
+    "BC7": (16, _pack_dds_bc7),
+    "BC5": (16, _pack_dds_bc5),
+}
+
+
+def pack_dds(rgba, width, height, dds_format, **kwargs):
+    if dds_format not in PACK_DDS_FORMATS:
+        raise TypeError(f"Invalid DDS format: {dds_format}")
+
+    size_block, pack_func = PACK_DDS_FORMATS[dds_format]
 
     # Block storage rounds up: width/height need not be multiples of 4 (nor
-    # powers of 2) per the DDS/BC spec, and wrapper.cpp's compress_image
+    # powers of 2) per the DDS/BC spec; compress_image_blocks() in wrapper.cpp
     # clamps edge-block reads accordingly.
     blocks_wide = (width + 3) // 4
     blocks_high = (height + 3) // 4
     num_blocks = blocks_wide * blocks_high
-    size_bc7_block = 16
 
     rgba = array("B", rgba)
-    rgba_addr, _  = rgba.buffer_info()
+    rgba_addr, _ = rgba.buffer_info()
     rgba_ptr = ctypes.c_void_p(rgba_addr)
 
-    blocks = ctypes.create_string_buffer(num_blocks * size_bc7_block)
-    blocks_ptr = ctypes.byref(blocks)
+    blocks = ctypes.create_string_buffer(num_blocks * size_block)
 
-    params_ptr = ctypes.byref(bc7_params)
+    pack_func(rgba_ptr, width, height, ctypes.byref(blocks), **kwargs)
 
-    w = ctypes.c_int(width)
-    h = ctypes.c_int(height)
-
-    bc7.compress_image(rgba_ptr, w, h, blocks_ptr, params_ptr)
     return bytes(blocks)
 
 
@@ -233,6 +268,10 @@ def unpack_dds(file_handle, width, height, dds_format, data_offset):
                 unpack_func(ctypes.byref(block_bytes), ctypes.byref(result_pixels), True, BC1ApproxMode.IDEAL)
             elif dds_format == "DXT5":
                 unpack_func(ctypes.byref(block_bytes), ctypes.byref(result_pixels), BC1ApproxMode.IDEAL)
+            elif dds_format == "BC5":
+                # Only writes the 2 selected channels per pixel (chan0/chan1);
+                # result_pixels is zero-initialized, so the other 2 stay 0.
+                unpack_func(ctypes.byref(block_bytes), ctypes.byref(result_pixels), 0, 1, 4)
             else:
                 unpack_func(ctypes.byref(block_bytes), ctypes.byref(result_pixels))
 

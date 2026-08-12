@@ -56,17 +56,30 @@ with open("/path/to/image.dds", "rb") as f:
 
 Width and height don't need to be multiples of 4 (or powers of 2) — per the
 DDS/BC spec, block storage rounds up (`ceil(width / 4) * ceil(height / 4)`
-blocks), which `unpack_dds`/`compress_bc7_image` handle automatically.
+blocks), which `unpack_dds`/`pack_dds` handle automatically.
 
 ```
 from PIL import Image
-from pybc7 import compress_bc7_image
+from pybc7 import pack_dds
 
-# Encoding (BC7 only for now; there's no BC1/BC3 encode path yet)
+# Encoding
 
 im = Image.open("/path/to/image.png").convert("RGBA")
-blocks = compress_bc7_image(im.tobytes(), im.width, im.height)
-# `blocks` is raw BC7 block data (no DDS header). Wrapping it in a valid DDS
-# container requires a DX10 extended header, since BC7 has no legacy FourCC
+blocks = pack_dds(im.tobytes(), im.width, im.height, "BC7")  # or DXT1, DXT5, BC5
+# `blocks` is raw block data (no DDS header). Wrapping it in a valid DDS
+# container requires a DX10 extended header for BC7/BC5 (no legacy FourCC)
 # — see tests/data/README.md for a worked example of building one.
 ```
+
+`pack_dds` accepts format-specific keyword arguments, forwarded to the
+underlying encoder:
+- `DXT1`/`BC1`: `level` (0-18, default 10), `allow_3color`, `use_transparent_texels_for_black`
+- `DXT5`/`BC3`: `level` (0-18, default 10)
+- `BC5`: `chan0`, `chan1` — which two source channels to encode (default 0, 1 i.e. R, G)
+- `BC7`: `params`, a `bc7enc_compress_block_params` (defaults to `bc7enc_compress_block_params_init()`)
+
+bc7enc_rdo only exposes single 4x4-block encoders (`bc7enc_compress_block`,
+`rgbcx::encode_bc1`/`encode_bc3`/`encode_bc5`) — there's no whole-image DXT1/
+DXT3/DXT5 encoder to call directly. `pack_dds` gets this by looping blocks in
+`wrapper.cpp` (our own file) and calling whichever single-block encoder the
+format needs, without modifying the bc7enc_rdo submodule itself.

@@ -33,21 +33,27 @@ extern "C" LIB_EXPORT bool unpack_bc3(const void* pBlock_bits, void* pPixels, rg
 }
 
 
+extern "C" LIB_EXPORT void unpack_bc5(const void* pBlock_bits, void* pPixels, uint32_t chan0, uint32_t chan1, uint32_t stride) {
+    rgbcx::unpack_bc5(pBlock_bits, pPixels, chan0, chan1, stride);
+}
+
+
 extern "C" LIB_EXPORT bool pack_bc7_block(void *pBlock, const void *pPixelsRGBA, const bc7enc_compress_block_params *pComp_params) {
     return bc7enc_compress_block(pBlock, pPixelsRGBA, pComp_params);
 }
 
-extern "C" LIB_EXPORT void compress_image(uint8_t *rgba, int width, int height, void *blocks, const bc7enc_compress_block_params *pComp_params) {
-
-    // BC7 only; DXT1/DXT3/DXT5 encoding isn't implemented here yet.
-    int bytesPerBlock = 16;
-
-    // initialise the block output
+// Shared block-iteration loop for whole-image block-compressed encoding.
+// bc7enc_rdo only provides single-block encoders (bc7enc_compress_block,
+// rgbcx::encode_bc1/bc3/bc5); this loops the image and hands each 4x4 block
+// to whichever one-block encoder is passed in, so the format-specific
+// functions below don't each duplicate it. width/height need not be
+// multiples of 4 (per the DDS/BC spec, block storage always rounds up);
+// edge blocks past the image bounds wrap the last valid row/column instead
+// of reading out of bounds.
+template <typename EncodeBlockFn>
+static void compress_image_blocks(const uint8_t *rgba, int width, int height, void *blocks, int bytesPerBlock, EncodeBlockFn encode_block) {
     uint8_t* targetBlock = reinterpret_cast< uint8_t* >( blocks );
 
-    // loop over blocks. width/height need not be multiples of 4 (per the DDS/BC
-    // spec, block storage always rounds up); edge blocks past the image bounds
-    // wrap the last valid row/column instead of reading out of bounds.
     for( int y = 0; y < height; y += 4 )
     {
         int bh = (height - y) < 4 ? (height - y) : 4;
@@ -73,12 +79,35 @@ extern "C" LIB_EXPORT void compress_image(uint8_t *rgba, int width, int height, 
                 }
             }
             // compress it into the output
-            bc7enc_compress_block(targetBlock, sourceRgba, pComp_params);
+            encode_block(targetBlock, sourceRgba);
             // advance
             targetBlock += bytesPerBlock;
         }
     }
+}
 
+extern "C" LIB_EXPORT void compress_image(uint8_t *rgba, int width, int height, void *blocks, const bc7enc_compress_block_params *pComp_params) {
+    compress_image_blocks(rgba, width, height, blocks, 16, [pComp_params](uint8_t* dst, const uint8_t* src) {
+        bc7enc_compress_block(dst, src, pComp_params);
+    });
+}
+
+extern "C" LIB_EXPORT void compress_image_bc1(uint8_t *rgba, int width, int height, void *blocks, uint32_t level, bool allow_3color, bool use_transparent_texels_for_black) {
+    compress_image_blocks(rgba, width, height, blocks, 8, [=](uint8_t* dst, const uint8_t* src) {
+        rgbcx::encode_bc1(level, dst, src, allow_3color, use_transparent_texels_for_black);
+    });
+}
+
+extern "C" LIB_EXPORT void compress_image_bc3(uint8_t *rgba, int width, int height, void *blocks, uint32_t level) {
+    compress_image_blocks(rgba, width, height, blocks, 16, [level](uint8_t* dst, const uint8_t* src) {
+        rgbcx::encode_bc3(level, dst, src);
+    });
+}
+
+extern "C" LIB_EXPORT void compress_image_bc5(uint8_t *rgba, int width, int height, void *blocks, uint32_t chan0, uint32_t chan1) {
+    compress_image_blocks(rgba, width, height, blocks, 16, [=](uint8_t* dst, const uint8_t* src) {
+        rgbcx::encode_bc5(dst, src, chan0, chan1, 4);
+    });
 }
 
 

@@ -1,10 +1,18 @@
 import os
 from dataclasses import dataclass
 
+import numpy as np
 import pytest
 
 DATA_DIR = "tests/data"
 DATA_OUT_DIR = "tests-output"
+
+
+def psnr(reference, sample):
+    mse = np.mean((reference.astype(np.float64) - sample.astype(np.float64)) ** 2)
+    if mse == 0:
+        return float("inf")
+    return 10 * np.log10((255.0 ** 2) / mse)
 
 
 @dataclass
@@ -56,6 +64,30 @@ DATA = [
 
 @pytest.fixture(params=DATA)
 def dds_sample(request):
+    return request.param
+
+
+@dataclass
+class EncodeSample:
+    file_dir: str
+    original_file_name: str  # uncompressed source image to encode
+    format: str
+    # See DDSSample.min_psnr_db: achievable fidelity depends on source content,
+    # not just the codec, so the floor is per-fixture.
+    min_psnr_db: float = 28.0
+
+
+ENCODE_DATA = [
+    EncodeSample(DATA_DIR, "bluemarble.png", "DXT1"),
+    EncodeSample(DATA_DIR, "bluemarble.png", "DXT5"),
+    EncodeSample(DATA_DIR, "bluemarble.png", "BC7", min_psnr_db=38.0),
+    EncodeSample(DATA_DIR, "alphablend.png", "DXT5", min_psnr_db=24.0),
+    EncodeSample(DATA_DIR, "alphablend.png", "BC7", min_psnr_db=34.0),  # BC7 handles the sharp edges much better than BC3
+]
+
+
+@pytest.fixture(params=ENCODE_DATA)
+def encode_sample(request):
     return request.param
 
 

@@ -3,16 +3,9 @@ import os
 
 import numpy as np
 from PIL import Image
-from tests.conftest import DATA_DIR, DATA_OUT_DIR
+from tests.conftest import DATA_DIR, DATA_OUT_DIR, psnr
 
-from pybc7 import compress_bc7_image, unpack_dds
-
-
-def psnr(reference, sample):
-    mse = np.mean((reference.astype(np.float64) - sample.astype(np.float64)) ** 2)
-    if mse == 0:
-        return float("inf")
-    return 10 * np.log10((255.0 ** 2) / mse)
+from pybc7 import pack_dds, unpack_dds
 
 
 def test_decoding(dds_sample):
@@ -45,17 +38,18 @@ def test_decoding(dds_sample):
 
 def test_bc7_roundtrip_non_multiple_of_4_dimensions():
     # Regression test: block storage must round up (ceil(dim / 4)), not down.
-    # A previous floor-division bug undersized the compress_bc7_image output
-    # buffer for any width/height not a multiple of 4, causing a heap buffer
-    # overflow (observed as a hard process crash, not a Python exception) on
-    # encode, and a spurious AssertionError on decode. The DDS/BC spec fully
-    # supports non-multiple-of-4 (and non-power-of-2) texture dimensions, so
-    # this is a real, common case rather than an edge case to reject.
+    # A previous floor-division bug undersized the pack_dds (then named
+    # compress_bc7_image) output buffer for any width/height not a multiple
+    # of 4, causing a heap buffer overflow (observed as a hard process crash,
+    # not a Python exception) on encode, and a spurious AssertionError on
+    # decode. The DDS/BC spec fully supports non-multiple-of-4 (and
+    # non-power-of-2) texture dimensions, so this is a real, common case
+    # rather than an edge case to reject.
     width, height = 250, 250
     original = Image.open(os.path.join(DATA_DIR, "bluemarble.png")).convert("RGBA")
     original = original.resize((width, height))
 
-    blocks = compress_bc7_image(original.tobytes(), width, height)
+    blocks = pack_dds(original.tobytes(), width, height, "BC7")
 
     fake_header = b"\x00" * 148  # unpack_dds only seeks past data_offset
     pixels = unpack_dds(io.BytesIO(fake_header + blocks), width, height, "BC7", len(fake_header))

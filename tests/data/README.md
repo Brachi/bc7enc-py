@@ -7,7 +7,7 @@ known-good original.
 DXT1/DXT5 fixtures are encoded with Pillow's independent encoder, so the
 DDS is never produced by the code under test. Pillow has no BC7 writer, so
 the BC7 fixture is instead encoded with this project's own
-`compress_bc7_image` (bc7enc_rdo) and wrapped in a hand-built DX10 DDS
+`pack_dds` (bc7enc_rdo) and wrapped in a hand-built DX10 DDS
 header (128-byte legacy header + 20-byte DX10 extension, `dxgiFormat =
 BC7_UNORM`) — meaning that fixture exercises encode+decode as a round
 trip rather than independently verifying the decoder. The PSNR-against-
@@ -33,14 +33,14 @@ symmetric between our encoder and decoder wouldn't be caught by it.
 
 There's no DDS writer in this project (or in Pillow) for BC7, so
 `bluemarble-BC7-NOMIPS.dds` was built by hand: encode raw blocks with
-`compress_bc7_image`, then prepend a standard 128-byte DDS header plus the
+`pack_dds`, then prepend a standard 128-byte DDS header plus the
 20-byte DX10 extension that `dxgiFormat = BC7_UNORM` (98) requires, since
 BC7 has no legacy FourCC of its own.
 
 ```python
 import struct
 from PIL import Image
-from pybc7 import compress_bc7_image
+from pybc7 import pack_dds
 
 def make_dds_dx10_header(width, height, dxgi_format):
     magic = b"DDS "
@@ -62,7 +62,7 @@ def make_dds_dx10_header(width, height, dxgi_format):
 DXGI_FORMAT_BC7_UNORM = 98
 
 im = Image.open("bluemarble.png").convert("RGBA")
-blocks = compress_bc7_image(im.tobytes(), im.width, im.height)
+blocks = pack_dds(im.tobytes(), im.width, im.height, "BC7")
 header = make_dds_dx10_header(im.width, im.height, DXGI_FORMAT_BC7_UNORM)
 
 with open("bluemarble-BC7-NOMIPS.dds", "wb") as f:
