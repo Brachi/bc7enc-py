@@ -243,10 +243,22 @@ def pack_dds(rgba, width, height, dds_format, **kwargs):
     return bytes(blocks)
 
 
-def unpack_dds(file_handle, width, height, dds_format, data_offset):
+# See wrapper.cpp's unswizzle_agnm/unswizzle_rxgb for the algorithm/rationale
+# of each. Each entry is called as swizzle_func(ctypes.byref(rgba), width,
+# height) and mutates the decoded RGBA buffer in place.
+SWIZZLES = {
+    "agnm": bc7.unswizzle_agnm,  # aka "DXT5nm"; green cast
+    "rxgb": bc7.unswizzle_rxgb,  # Doom 3/idTech4 convention; pink/magenta cast
+}
+
+
+def unpack_dds(file_handle, width, height, dds_format, data_offset, unswizzle=None):
 
     if dds_format not in DDS_FORMATS_BLOCK_SIZE:
         raise TypeError(f"Invalid DDS format: {dds_format}")
+
+    if unswizzle is not None and unswizzle not in SWIZZLES:
+        raise TypeError(f"Invalid unswizzle: {unswizzle}")
 
     SIZE_BLOCK, unpack_func = DDS_FORMATS_BLOCK_SIZE[dds_format]
 
@@ -279,5 +291,8 @@ def unpack_dds(file_handle, width, height, dds_format, data_offset):
             blocks_processed += 1
 
     assert blocks_processed == num_blocks, f"blocks processed: {blocks_processed}, {num_blocks}"
+
+    if unswizzle is not None:
+        SWIZZLES[unswizzle](byref(rgba), width, height)
 
     return rgba

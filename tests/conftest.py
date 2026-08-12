@@ -30,6 +30,7 @@ class DDSSample:
     # Legacy DXT1/DXT3/DXT5 FourCC headers are a fixed 128 bytes. BC7 has no legacy
     # FourCC, so it's stored via the DX10 extended header, which adds 20 bytes.
     data_offset: int = 128
+    unswizzle: str | None = None  # passed through to unpack_dds
 
 
 DATA = [
@@ -59,6 +60,22 @@ DATA = [
         "bluemarble.png",
         min_psnr_db=38.0,  # BC7 is a much higher-fidelity codec than BC1/BC3
         data_offset=148,
+    ),
+    DDSSample(
+        DATA_DIR,
+        "normalmap-swizzled-agnm-BC3-NOMIPS.dds",
+        256, 256, "DXT5",
+        "normalmap.png",
+        min_psnr_db=34.0,
+        unswizzle="agnm",
+    ),
+    DDSSample(
+        DATA_DIR,
+        "normalmap-swizzled-rxgb-BC3-NOMIPS.dds",
+        256, 256, "DXT5",
+        "normalmap.png",
+        min_psnr_db=34.0,
+        unswizzle="rxgb",
     ),
 ]
 

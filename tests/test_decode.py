@@ -17,6 +17,7 @@ def test_decoding(dds_sample):
             dds_sample.height,
             dds_sample.format,
             dds_sample.data_offset,
+            unswizzle=dds_sample.unswizzle,
         )
         decoded = Image.frombytes("RGBA", (dds_sample.width, dds_sample.height), bytes(pixels))
         decoded.save(f"{os.path.join(DATA_OUT_DIR, dds_sample.file_name)}.png")

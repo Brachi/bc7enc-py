@@ -2,6 +2,8 @@
 #include "bc7enc_rdo/bc7decomp.h"
 #include "bc7enc_rdo/bc7enc.h"
 
+#include <cmath>
+
 #ifdef _WIN32
     #define LIB_EXPORT __declspec(dllexport)
 #else
@@ -35,6 +37,63 @@ extern "C" LIB_EXPORT bool unpack_bc3(const void* pBlock_bits, void* pPixels, rg
 
 extern "C" LIB_EXPORT void unpack_bc5(const void* pBlock_bits, void* pPixels, uint32_t chan0, uint32_t chan1, uint32_t stride) {
     rgbcx::unpack_bc5(pBlock_bits, pPixels, chan0, chan1, stride);
+}
+
+
+// Reconstructs a standard RGB tangent-space normal map from an AGNM-
+// swizzled texture (Alpha-Green Normal Map, aka "DXT5nm": a console/GPU-
+// vendor optimization - BC3/DXT5 has much higher-precision alpha than
+// color, so X/Y get stored there instead of in RGB - "green" instead of
+// the usual "purple" normal map look).
+//   X (normal.x) <- alpha channel
+//   Y (normal.y) <- green channel
+//   Z (normal.z) -> not stored; reconstructed, since normal vectors are
+//                    unit length: X^2 + Y^2 + Z^2 = 1
+// Mutates rgba in place. EXPERIMENTAL: only reconstructs the positive Z
+// hemisphere (sqrt is never negative), which holds for typical tangent-
+// space normal maps but isn't validated beyond that; red/blue in the
+// source are assumed unused.
+extern "C" LIB_EXPORT void unswizzle_agnm(uint8_t *rgba, int width, int height) {
+    int num_pixels = width * height;
+    for (int i = 0; i < num_pixels; ++i) {
+        uint8_t *p = rgba + i * 4;
+
+        double x_byte = p[3];
+        double y_byte = p[1];
+
+        double x_norm = (x_byte / 255.0) * 2.0 - 1.0;
+        double y_norm = (y_byte / 255.0) * 2.0 - 1.0;
+        double z_sq = 1.0 - x_norm * x_norm - y_norm * y_norm;
+        double z_norm = std::sqrt(z_sq > 0.0 ? z_sq : 0.0);
+        double z_byte = (z_norm + 1.0) * 0.5 * 255.0;
+
+        p[0] = (uint8_t)(x_byte + 0.5);
+        p[1] = (uint8_t)(y_byte + 0.5);
+        p[2] = (uint8_t)(z_byte + 0.5);
+        p[3] = 255;
+    }
+}
+
+
+// Reconstructs a standard RGB tangent-space normal map from an RXGB-
+// swizzled texture (the Doom 3/idTech4 convention). Like AGNM, X moves to
+// alpha for its higher precision, but unlike AGNM, Y and Z are still
+// stored normally in green/blue (not reconstructed) - only the now-
+// redundant red channel is discarded, conventionally filled with white.
+// This gives it a pink/magenta cast rather than AGNM's green cast: red
+// ends up constant-white in the raw encoding, vs. constant-near-zero.
+//   X (normal.x) <- alpha channel (red is discarded, was filled with white)
+//   Y (normal.y) <- green channel, unchanged
+//   Z (normal.z) <- blue channel, unchanged
+// Mutates rgba in place.
+extern "C" LIB_EXPORT void unswizzle_rxgb(uint8_t *rgba, int width, int height) {
+    int num_pixels = width * height;
+    for (int i = 0; i < num_pixels; ++i) {
+        uint8_t *p = rgba + i * 4;
+        p[0] = p[3];  // R <- X (alpha)
+        // G (Y) and B (Z) are already stored correctly, left as-is.
+        p[3] = 255;
+    }
 }
 
 

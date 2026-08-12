@@ -29,6 +29,25 @@ symmetric between our encoder and decoder wouldn't be caught by it.
   Source: https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/AlphaBlendModeTest
   - `alphablend-BC3-NOMIPS.dds` — encoded as DXT5/BC3.
 
+- `normalmap.png` — cropped/resized from `NormalTangentTest_Normal.png`,
+  part of the Khronos glTF-Sample-Assets `NormalTangentTest` model (a
+  purpose-built asset for testing normal-map handling). A genuine
+  tangent-space normal map (purple/blue, R=X, G=Y, B=Z), used as
+  license-clean test data for the `unswizzle` feature — there's no real
+  captured swizzled texture in this repo, to avoid committing a
+  copyrighted game asset. © 2018 Analytical Graphics, Inc. / Ed Mackey.
+  Licensed [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/legalcode).
+  Source: https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/NormalTangentTest
+  - `normalmap-swizzled-agnm-BC3-NOMIPS.dds` — `normalmap.png` swizzled
+    into AGNM/"DXT5nm" layout (X->alpha, Y->green, red/blue unused) and
+    encoded as DXT5/BC3 (Pillow). Decoded normally this looks flat green;
+    `unpack_dds(..., unswizzle="agnm")` should reconstruct `normalmap.png`.
+  - `normalmap-swizzled-rxgb-BC3-NOMIPS.dds` — `normalmap.png` swizzled
+    into RXGB layout (X->alpha, red filled with white, green/blue
+    unchanged) and encoded as DXT5/BC3 (Pillow). Decoded normally this
+    looks pink/magenta; `unpack_dds(..., unswizzle="rxgb")` should
+    reconstruct `normalmap.png`.
+
 ## Building a BC7 DDS file
 
 There's no DDS writer in this project (or in Pillow) for BC7, so
@@ -68,4 +87,29 @@ header = make_dds_dx10_header(im.width, im.height, DXGI_FORMAT_BC7_UNORM)
 with open("bluemarble-BC7-NOMIPS.dds", "wb") as f:
     f.write(header)
     f.write(blocks)
+```
+
+## Building the swizzle fixtures
+
+```python
+import numpy as np
+from PIL import Image
+
+# normalmap.png itself: NormalTangentTest_Normal.png resized to 256x256
+# im = Image.open("NormalTangentTest_Normal.png").convert("RGBA")
+# im.resize((256, 256), Image.LANCZOS).save("normalmap.png")
+
+normal = np.array(Image.open("normalmap.png").convert("RGBA"))
+
+agnm = np.zeros_like(normal)
+agnm[..., 3] = normal[..., 0]  # X -> alpha
+agnm[..., 1] = normal[..., 1]  # Y -> green
+# red/blue left at 0: unused by AGNM
+Image.fromarray(agnm).save("normalmap-swizzled-agnm-BC3-NOMIPS.dds", pixel_format="DXT5")
+
+rxgb = normal.copy()
+rxgb[..., 0] = 255             # red filled with white
+rxgb[..., 3] = normal[..., 0]  # X -> alpha
+# green (Y), blue (Z) unchanged
+Image.fromarray(rxgb).save("normalmap-swizzled-rxgb-BC3-NOMIPS.dds", pixel_format="DXT5")
 ```

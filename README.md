@@ -58,6 +58,25 @@ Width and height don't need to be multiples of 4 (or powers of 2) — per the
 DDS/BC spec, block storage rounds up (`ceil(width / 4) * ceil(height / 4)`
 blocks), which `unpack_dds`/`pack_dds` handle automatically.
 
+**Experimental:** `unpack_dds` also accepts an optional `unswizzle` argument,
+for reconstructing a standard RGB tangent-space normal map from one that's
+been swizzled to exploit BC3/DXT5's higher-precision alpha channel (X moved
+into alpha instead of the usual RGB layout):
+
+- `"agnm"` (Alpha-Green Normal Map, aka "DXT5nm"): X <- alpha, Y <- green,
+  Z is not stored at all and gets reconstructed from X/Y since normal
+  vectors are unit length. Decoded without the swizzle, these textures
+  look flat green instead of the usual purple.
+- `"rxgb"` (the Doom 3/idTech4 convention): X <- alpha; unlike `"agnm"`,
+  Y and Z are still stored normally in green/blue, so no reconstruction is
+  needed for them — only the now-redundant red channel is discarded
+  (conventionally filled with white). Decoded without the swizzle, these
+  textures look pink/magenta instead of purple.
+
+```
+pixels = unpack_dds(f, 1024, 1024, "DXT5", 128, unswizzle="agnm")  # or "rxgb"
+```
+
 ```
 from PIL import Image
 from pybc7 import pack_dds
