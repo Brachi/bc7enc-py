@@ -97,6 +97,75 @@ extern "C" LIB_EXPORT void unswizzle_rxgb(uint8_t *rgba, int width, int height) 
 }
 
 
+// Resizes src (src_width x src_height RGBA) into caller-allocated dst
+// (dst_width x dst_height RGBA) via a 2x2 box average. Only valid when
+// dst dims are max(1, src_dim>>1) on each axis (i.e. one mip-chain step in
+// a power-of-2 base image, per the standard mip halving rule) - the "axis
+// already at 1" case is handled the same way DirectXTex's
+// Generate2DMipsBoxFilter does, by resampling the same row/column twice
+// instead of requiring square-only input.
+extern "C" LIB_EXPORT void downsample_box(const uint8_t *src, int src_width, int src_height,
+                                           uint8_t *dst, int dst_width, int dst_height) {
+    for (int dy = 0; dy < dst_height; ++dy) {
+        int sy0 = (src_height > 1) ? dy * 2 : 0;
+        int sy1 = (src_height > 1) ? sy0 + 1 : sy0;
+        for (int dx = 0; dx < dst_width; ++dx) {
+            int sx0 = (src_width > 1) ? dx * 2 : 0;
+            int sx1 = (src_width > 1) ? sx0 + 1 : sx0;
+
+            const uint8_t *p00 = src + 4 * (sy0 * src_width + sx0);
+            const uint8_t *p01 = src + 4 * (sy0 * src_width + sx1);
+            const uint8_t *p10 = src + 4 * (sy1 * src_width + sx0);
+            const uint8_t *p11 = src + 4 * (sy1 * src_width + sx1);
+            uint8_t *out = dst + 4 * (dy * dst_width + dx);
+
+            for (int c = 0; c < 4; ++c)
+                out[c] = (uint8_t)((p00[c] + p01[c] + p10[c] + p11[c] + 2) / 4);
+        }
+    }
+}
+
+// General bilinear resize of src (src_width x src_height RGBA) into
+// caller-allocated dst (dst_width x dst_height RGBA), for arbitrary
+// dst dims relative to src (not just clean 2x downsampling). Fallback for
+// mip generation on non-power-of-2 base images, matching how DirectXTex
+// falls back to TEX_FILTER_LINEAR in that case.
+extern "C" LIB_EXPORT void downsample_bilinear(const uint8_t *src, int src_width, int src_height,
+                                                uint8_t *dst, int dst_width, int dst_height) {
+    double x_ratio = (double)src_width / (double)dst_width;
+    double y_ratio = (double)src_height / (double)dst_height;
+
+    for (int dy = 0; dy < dst_height; ++dy) {
+        double sy = (dy + 0.5) * y_ratio - 0.5;
+        int sy0 = (int)std::floor(sy);
+        double fy = sy - sy0;
+        int sy0c = sy0 < 0 ? 0 : (sy0 >= src_height ? src_height - 1 : sy0);
+        int sy1c = (sy0 + 1) < 0 ? 0 : ((sy0 + 1) >= src_height ? src_height - 1 : (sy0 + 1));
+
+        for (int dx = 0; dx < dst_width; ++dx) {
+            double sx = (dx + 0.5) * x_ratio - 0.5;
+            int sx0 = (int)std::floor(sx);
+            double fx = sx - sx0;
+            int sx0c = sx0 < 0 ? 0 : (sx0 >= src_width ? src_width - 1 : sx0);
+            int sx1c = (sx0 + 1) < 0 ? 0 : ((sx0 + 1) >= src_width ? src_width - 1 : (sx0 + 1));
+
+            const uint8_t *p00 = src + 4 * (sy0c * src_width + sx0c);
+            const uint8_t *p01 = src + 4 * (sy0c * src_width + sx1c);
+            const uint8_t *p10 = src + 4 * (sy1c * src_width + sx0c);
+            const uint8_t *p11 = src + 4 * (sy1c * src_width + sx1c);
+            uint8_t *out = dst + 4 * (dy * dst_width + dx);
+
+            for (int c = 0; c < 4; ++c) {
+                double top = p00[c] * (1.0 - fx) + p01[c] * fx;
+                double bot = p10[c] * (1.0 - fx) + p11[c] * fx;
+                double val = top * (1.0 - fy) + bot * fy;
+                out[c] = (uint8_t)(val + 0.5);
+            }
+        }
+    }
+}
+
+
 extern "C" LIB_EXPORT bool pack_bc7_block(void *pBlock, const void *pPixelsRGBA, const bc7enc_compress_block_params *pComp_params) {
     return bc7enc_compress_block(pBlock, pPixelsRGBA, pComp_params);
 }
