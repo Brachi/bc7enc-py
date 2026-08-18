@@ -59,7 +59,7 @@ BC7 has no legacy FourCC of its own.
 ```python
 import struct
 from PIL import Image
-from pybc7 import pack_dds
+from bc7enc import pack_dds
 
 def make_dds_dx10_header(width, height, dxgi_format):
     magic = b"DDS "
