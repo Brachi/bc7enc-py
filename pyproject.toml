@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pybc7"
+name = "bc7enc-py"
 version = "0.1.0"
 description = "Python bindings for bc7enc_rdo, state of the art RDO BC1-7 GPU texture encoders"
 readme = "README.md"
