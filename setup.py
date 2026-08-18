@@ -19,9 +19,9 @@ class bdist_wheel(_bdist_wheel):
 
         base_dir = os.getcwd()
         try:
-            shutil.move(os.path.join(base_dir, "pybc7.so"), "src/pybc7/pybc7.so")
+            shutil.move(os.path.join(base_dir, "bc7enc.so"), "src/bc7enc/bc7enc.so")
         except FileNotFoundError:
-            shutil.move(os.path.join(base_dir, "Release", "pybc7.dll"), "src/pybc7/pybc7.dll")
+            shutil.move(os.path.join(base_dir, "Release", "bc7enc.dll"), "src/bc7enc/bc7enc.dll")
 
         super().run()
 

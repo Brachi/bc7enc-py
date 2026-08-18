@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(pybc7)
+project(bc7enc)
 
 
 set (BC7ENC_SRC_LIST
@@ -13,4 +13,4 @@ set (BC7ENC_SRC_LIST
 	)
 
 set(CMAKE_SHARED_LIBRARY_PREFIX "")
-add_library(pybc7 SHARED ${BC7ENC_SRC_LIST})
+add_library(bc7enc SHARED ${BC7ENC_SRC_LIST})

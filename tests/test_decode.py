@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 from tests.conftest import DATA_DIR, DATA_OUT_DIR, psnr
 
-from pybc7 import pack_dds, unpack_dds
+from bc7enc import pack_dds, unpack_dds
 
 
 def test_decoding(dds_sample):

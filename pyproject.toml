@@ -22,7 +22,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 # Compiled in setup.py
-pybc7 = ["pybc7.so", "pybc7.dll"]
+bc7enc = ["bc7enc.so", "bc7enc.dll"]
 
 [tool.cibuildwheel]
 build = "cp310-*"

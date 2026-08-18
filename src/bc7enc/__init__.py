@@ -10,9 +10,9 @@ this_dir = os.path.dirname(__file__)
 
 if not bc7:
     try:
-        bc7 = ctypes.cdll.LoadLibrary(os.path.join(this_dir, 'pybc7.so'))
+        bc7 = ctypes.cdll.LoadLibrary(os.path.join(this_dir, 'bc7enc.so'))
     except OSError:
-        bc7 = ctypes.cdll.LoadLibrary(os.path.join(this_dir, 'pybc7.dll'))
+        bc7 = ctypes.cdll.LoadLibrary(os.path.join(this_dir, 'bc7enc.dll'))
     bc7.init(0)
     bc7.bc7_init()
 

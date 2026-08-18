@@ -1,4 +1,4 @@
-# pybc7
+# bc7enc-py
 
 ⚠️
 This is a work in progress
@@ -35,7 +35,7 @@ The API for now focus on cases for unpacking the dds data where no header might 
 
 ```
 from PIL import Image  # Optional
-from pybc7 import unpack_dds
+from bc7enc import unpack_dds
 
 # Decoding
 
@@ -79,7 +79,7 @@ pixels = unpack_dds(f, 1024, 1024, "DXT5", 128, unswizzle="agnm")  # or "rxgb"
 
 ```
 from PIL import Image
-from pybc7 import pack_dds
+from bc7enc import pack_dds
 
 # Encoding
 
