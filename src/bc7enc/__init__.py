@@ -219,12 +219,7 @@ PACK_DDS_FORMATS = {
 }
 
 
-def pack_dds(rgba, width, height, dds_format, **kwargs):
-    if dds_format not in PACK_DDS_FORMATS:
-        raise TypeError(f"Invalid DDS format: {dds_format}")
-
-    size_block, pack_func = PACK_DDS_FORMATS[dds_format]
-
+def _pack_dds_single_level(rgba, width, height, pack_func, size_block, **kwargs):
     # Block storage rounds up: width/height need not be multiples of 4 (nor
     # powers of 2) per the DDS/BC spec; compress_image_blocks() in wrapper.cpp
     # clamps edge-block reads accordingly.
@@ -241,6 +236,68 @@ def pack_dds(rgba, width, height, dds_format, **kwargs):
     pack_func(rgba_ptr, width, height, ctypes.byref(blocks), **kwargs)
 
     return bytes(blocks)
+
+
+def _is_pow2(n):
+    return n > 0 and (n & (n - 1)) == 0
+
+
+def generate_mip_chain(rgba, width, height, max_levels=None):
+    """
+    Generates a mip chain from a base RGBA image: [(width, height,
+    rgba_bytes), ...] starting with the (unchanged) base level down to
+    1x1, or max_levels total if given. Each level's dimensions follow the
+    standard mip halving rule (dim > 1 ? dim // 2 : 1), independent per
+    axis - this is unrelated to the ceil-based block-count rounding
+    pack_dds/unpack_dds do per level.
+
+    bc7enc_rdo has no mip-generation of its own (it's a pure block
+    compressor - see wrapper.cpp's compress_image_blocks); this uses a 2x2
+    box filter when both base dimensions are powers of 2 (exact averaging,
+    since every level then halves cleanly), and falls back to a general
+    bilinear resize otherwise, mirroring DirectXTex's own fallback rule
+    (see wrapper.cpp's downsample_box/downsample_bilinear).
+    """
+    downsample = bc7.downsample_box if (_is_pow2(width) and _is_pow2(height)) else bc7.downsample_bilinear
+
+    cur_width, cur_height = width, height
+    cur_bytes = bytes(rgba)
+    levels = [(cur_width, cur_height, cur_bytes)]
+
+    while cur_width > 1 or cur_height > 1:
+        if max_levels is not None and len(levels) >= max_levels:
+            break
+
+        next_width = cur_width // 2 if cur_width > 1 else 1
+        next_height = cur_height // 2 if cur_height > 1 else 1
+
+        cur_buf = ctypes.create_string_buffer(cur_bytes, len(cur_bytes))
+        next_buf = ctypes.create_string_buffer(next_width * next_height * 4)
+        downsample(ctypes.byref(cur_buf), cur_width, cur_height, ctypes.byref(next_buf), next_width, next_height)
+
+        cur_width, cur_height = next_width, next_height
+        cur_bytes = bytes(next_buf)
+        levels.append((cur_width, cur_height, cur_bytes))
+
+    return levels
+
+
+def pack_dds(rgba, width, height, dds_format, mipmaps=False, **kwargs):
+    if dds_format not in PACK_DDS_FORMATS:
+        raise TypeError(f"Invalid DDS format: {dds_format}")
+
+    size_block, pack_func = PACK_DDS_FORMATS[dds_format]
+
+    if not mipmaps:
+        return _pack_dds_single_level(rgba, width, height, pack_func, size_block, **kwargs)
+
+    max_levels = mipmaps if isinstance(mipmaps, int) and mipmaps is not True else None
+    levels = generate_mip_chain(rgba, width, height, max_levels=max_levels)
+
+    return b"".join(
+        _pack_dds_single_level(level_rgba, level_width, level_height, pack_func, size_block, **kwargs)
+        for level_width, level_height, level_rgba in levels
+    )
 
 
 # See wrapper.cpp's unswizzle_agnm/unswizzle_rxgb for the algorithm/rationale

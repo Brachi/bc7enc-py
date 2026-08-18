@@ -102,3 +102,27 @@ bc7enc_rdo only exposes single 4x4-block encoders (`bc7enc_compress_block`,
 DXT3/DXT5 encoder to call directly. `pack_dds` gets this by looping blocks in
 `wrapper.cpp` (our own file) and calling whichever single-block encoder the
 format needs, without modifying the bc7enc_rdo submodule itself.
+
+**Mipmaps:** bc7enc_rdo has no concept of mip levels either — it's a pure
+block compressor, same posture as Microsoft's
+[DirectXTex](https://github.com/microsoft/DirectXTex) (whose `GenerateMipMaps`
+and `CompressEx` are entirely separate: one resamples an uncompressed image,
+the other loops over an already-built chain compressing each level
+independently). `pack_dds` follows the same split — it's opt-in and doesn't
+change the function's return type:
+
+```
+blocks = pack_dds(im.tobytes(), im.width, im.height, "BC7", mipmaps=True)
+# blocks is still plain bytes: every mip level's block data concatenated in
+# order (base level first), same "no DDS header" contract as the single-
+# level case. mipmaps=<int> caps the chain at that many levels instead of
+# going all the way down to 1x1.
+```
+
+Level dimensions follow the standard mip halving rule (`dim > 1 ? dim // 2 : 1`,
+independent per axis). Resampling uses a 2x2 box filter when both base
+dimensions are powers of 2 (exact averaging, since every level then halves
+cleanly), and falls back to a general bilinear resize otherwise — mirroring
+DirectXTex's own fallback rule (`TEX_FILTER_BOX` only for power-of-2 input,
+`TEX_FILTER_LINEAR` otherwise). See `generate_mip_chain` and wrapper.cpp's
+`downsample_box`/`downsample_bilinear`.
